@@ -1,64 +1,43 @@
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf';
 import { useState } from 'react';
 
+import { CanvasPdf } from '../components/CanvasPdf';
 import tempFile from '../data/short.pdf';
 import pdfWorker from '../utils/pdf.worker?worker';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new pdfWorker();
 
 export function PDFSearch() {
+  const [matches, setMatches] = useState([]);
+
   const [term, setTerm] = useState('');
-  const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [pdf, setPdf] = useState(null);
-  const [selectedPage, setSelectedPage] = useState(null);
 
   const handleSearch = async () => {
     if (!term) return;
+    setMatches([]);
     setLoading(true);
-    setResults([]);
-    setSelectedPage(null);
+
+    const matchedPages = [];
 
     try {
       const loadedPdf = await pdfjsLib.getDocument(tempFile).promise;
-      setPdf(loadedPdf);
-      const matches = [];
 
       for (let i = 1; i <= loadedPdf.numPages; i++) {
         const page = await loadedPdf.getPage(i);
         const textContent = await page.getTextContent();
         const text = textContent.items.map((item) => item.str).join(' ');
 
-        if (text.includes(term)) {
-          matches.push({ page: i, snippet: text.slice(0, 100) });
+        if (text.toLowerCase().includes(term.toLowerCase())) {
+          matchedPages.push(page);
         }
       }
 
-      setResults(matches);
+      setMatches(matchedPages);
+      setLoading(false);
     } catch (e) {
       console.error('Ошибка загрузки PDF:', e);
     }
-
-    setLoading(false);
-  };
-
-  const renderPage = async (pageNumber) => {
-    if (!pdf) return;
-
-    const page = await pdf.getPage(pageNumber);
-    const viewport = page.getViewport({ scale: 1.5 });
-    const canvas = document.getElementById('pdf-canvas');
-    const context = canvas.getContext('2d');
-
-    canvas.height = viewport.height;
-    canvas.width = viewport.width;
-
-    await page.render({ canvasContext: context, viewport }).promise;
-  };
-
-  const handleClickPage = (pageNumber) => {
-    setSelectedPage(pageNumber);
-    renderPage(pageNumber);
   };
 
   return (
@@ -74,27 +53,13 @@ export function PDFSearch() {
         Поиск
       </button>
 
-      {loading && <p className="mt-4">Загрузка...</p>}
+      {loading && <p>Загрузка...</p>}
 
-      <ul className="mt-4 space-y-2">
-        {results.map((r, i) => (
-          <li
-            key={i}
-            className="p-2 border rounded hover:bg-gray-100 cursor-pointer"
-            onClick={() => handleClickPage(r.page)}
-          >
-            <strong>Страница {r.page}</strong>
-            <p>{r.snippet}...</p>
-          </li>
+      <div className="py-4">
+        {matches.map((page, id) => (
+          <CanvasPdf key={id} page={page} />
         ))}
-      </ul>
-
-      {selectedPage && (
-        <div className="mt-6">
-          <h2 className="text-lg font-semibold mb-2">Страница {selectedPage}</h2>
-          <canvas id="pdf-canvas" className="border shadow-md" />
-        </div>
-      )}
+      </div>
     </div>
   );
 }
